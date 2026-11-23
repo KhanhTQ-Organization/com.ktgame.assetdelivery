@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/KhanhTQ-Organization/com.ktgame.assetdelivery/compare/v1.0.1...v1.0.2) (2026-11-23)
+
+
+### Bug Fixes
+
+* add core game ktgame ([8ddd7c4](https://github.com/KhanhTQ-Organization/com.ktgame.assetdelivery/commit/8ddd7c4c959064172eda3fe900d89387d25a60ad))
+
 ## [1.0.1](https://github.com/KhanhTQ-Organization/com.ktgame.assetdelivery/compare/v1.0.0...v1.0.1) (2026-11-23)
 
 
