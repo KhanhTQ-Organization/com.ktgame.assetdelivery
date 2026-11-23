@@ -12,10 +12,9 @@ namespace com.ktgame.assetdelivery.editor
 	public static class AddressablesContent
 	{
 		public static AddressableAssetSettings Settings => AddressableAssetSettingsDefaultObject.Settings;
-		
+
 		public static string RootBuildPath => Addressables.BuildPath;
 
-		/// <
 		public static string LocalBundlePath => Path.Combine(Addressables.BuildPath, EditorUserBuildSettings.activeBuildTarget.ToString());
 
 		public static bool Build(bool clean, out AddressablesPlayerBuildResult result, out string error)
@@ -26,7 +25,7 @@ namespace com.ktgame.assetdelivery.editor
 			var settings = Settings;
 			if (settings == null)
 			{
-				error = "Không tìm thấy AddressableAssetSettings.";
+				error = "AddressableAssetSettings not found.";
 				return false;
 			}
 
@@ -41,7 +40,7 @@ namespace com.ktgame.assetdelivery.editor
 			AddressableAssetSettings.BuildPlayerContent(out result);
 			if (result == null || !string.IsNullOrEmpty(result.Error))
 			{
-				error = $"Build Addressables lỗi: {result?.Error ?? "không có kết quả build"}";
+				error = $"Addressables build failed: {result?.Error ?? "no build result"}";
 				return false;
 			}
 
@@ -65,10 +64,9 @@ namespace com.ktgame.assetdelivery.editor
 				}
 			}
 
-			Debug.LogWarning("[AssetDelivery] Không tìm thấy BuildScriptPackedMode, dùng data builder hiện tại.");
+			Debug.LogWarning("[AssetDelivery] BuildScriptPackedMode not found, using the active data builder.");
 		}
 
-		/// <summary>Content đã build xong thì player build không được build lại Addressables (sẽ đưa bundle của pack trở lại base).</summary>
 		public static bool EnsureNotBuiltWithPlayer(AddressableAssetSettings settings)
 		{
 			if (settings == null) return false;
@@ -82,20 +80,18 @@ namespace com.ktgame.assetdelivery.editor
 		public static bool HasLocalBuild() => Directory.Exists(LocalBundlePath);
 	}
 
-	/// <summary>Chỉnh plugin Google Android App Bundle (nếu có) bằng reflection. Không có plugin thì bỏ qua.</summary>
 	internal static class GooglePlayPluginBridge
 	{
 		private const string SerializerTypeName =
 			"Google.Android.AppBundle.Editor.Internal.AssetPacks.AssetDeliveryConfigSerializer, Google.Android.AppBundle.Editor";
 
-		/// <returns>true nếu đã đổi giá trị.</returns>
 		public static bool TrySetSplitBaseModuleAssets(bool value, out string note)
 		{
 			note = null;
 			var serializerType = Type.GetType(SerializerTypeName);
 			if (serializerType == null)
 			{
-				note = "project không có plugin Google Android App Bundle";
+				note = "Google Android App Bundle plugin not found";
 				return false;
 			}
 
@@ -106,21 +102,21 @@ namespace com.ktgame.assetdelivery.editor
 					System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance;
 
 				var load = serializerType.GetMethod("LoadConfig", flags, null, Type.EmptyTypes, null);
-				if (load == null) throw new InvalidOperationException("không có LoadConfig");
+				if (load == null) throw new InvalidOperationException("LoadConfig not found");
 				object serializer = load.IsStatic ? null : Activator.CreateInstance(serializerType);
-				object config = load.Invoke(serializer, null) ?? throw new InvalidOperationException("LoadConfig trả về null");
+				object config = load.Invoke(serializer, null) ?? throw new InvalidOperationException("LoadConfig returned null");
 
-				var field = config.GetType().GetField("SplitBaseModuleAssets", flags) ?? throw new InvalidOperationException("không có SplitBaseModuleAssets");
+				var field = config.GetType().GetField("SplitBaseModuleAssets", flags) ?? throw new InvalidOperationException("SplitBaseModuleAssets not found");
 				if ((bool)field.GetValue(config) == value) return false;
 
 				field.SetValue(config, value);
-				var save = serializerType.GetMethod("SaveConfig", flags, null, new[] { config.GetType() }, null) ?? throw new InvalidOperationException("không có SaveConfig");
+				var save = serializerType.GetMethod("SaveConfig", flags, null, new[] { config.GetType() }, null) ?? throw new InvalidOperationException("SaveConfig not found");
 				save.Invoke(save.IsStatic ? null : serializer, new[] { config });
 				return true;
 			}
 			catch (Exception e)
 			{
-				note = $"không chỉnh được plugin Google: {e.Message}";
+				note = $"failed to configure the Google plugin: {e.Message}";
 				return false;
 			}
 		}

@@ -17,6 +17,7 @@ namespace com.ktgame.assetdelivery.editor
 		private Vector2 _scroll;
 		private bool _showAdvanced;
 		private bool _showAllRules;
+		private AssetPackRule _editingRule;
 
 		private List<ValidationIssue> _issues;
 		private List<DuplicateDependency> _duplicates;
@@ -293,19 +294,27 @@ namespace com.ktgame.assetdelivery.editor
 							OnSettingsChanged();
 						}
 
-						if (GUILayout.Button("Edit", EditorStyles.miniButtonLeft, GUILayout.Width(40)))
+						bool editing = ReferenceEquals(_editingRule, rule);
+						if (GUILayout.Button(editing ? "Done" : "Edit", EditorStyles.miniButtonLeft, GUILayout.Width(52)))
 						{
-							_showAdvanced = true;
-							_showAllRules = true;
+							_editingRule = editing ? null : rule;
+							GUI.FocusControl(null);
 						}
 
-						if (GUILayout.Button("Remove", EditorStyles.miniButtonRight, GUILayout.Width(40)))
+						if (GUILayout.Button("Remove", EditorStyles.miniButtonRight, GUILayout.Width(64)))
 						{
 							Undo.RecordObject(_settings, "Remove rule");
 							_settings.rules.Remove(rule);
+							if (ReferenceEquals(_editingRule, rule)) _editingRule = null;
 							OnSettingsChanged();
 							GUIUtility.ExitGUI();
 						}
+					}
+
+					if (ReferenceEquals(_editingRule, rule))
+					{
+						DrawRuleEditor(rule);
+						EditorGUILayout.Space(4);
 					}
 
 					if (!rule.enabled) continue;
@@ -323,6 +332,33 @@ namespace com.ktgame.assetdelivery.editor
 					}
 				}
 			}
+		}
+
+		private void DrawRuleEditor(AssetPackRule rule)
+		{
+			if (_serialized == null || _serialized.targetObject != _settings) _serialized = new SerializedObject(_settings);
+			_serialized.Update();
+
+			int index = _settings.rules.IndexOf(rule);
+			if (index < 0) return;
+
+			var element = _serialized.FindProperty(nameof(AssetDeliverySettings.rules)).GetArrayElementAtIndex(index);
+			var end = element.GetEndProperty();
+			var it = element.Copy();
+			bool enterChildren = true;
+
+			using (new EditorGUI.IndentLevelScope())
+			{
+				while (it.NextVisible(enterChildren) && !SerializedProperty.EqualContents(it, end))
+				{
+					enterChildren = false;
+					if (it.name == nameof(AssetPackRule.enabled)) continue;
+					if (it.propertyType == SerializedPropertyType.ManagedReference) it.isExpanded = true;
+					EditorGUILayout.PropertyField(it, true);
+				}
+			}
+
+			if (_serialized.ApplyModifiedProperties()) OnSettingsChanged(saveAssets: false);
 		}
 
 		#endregion

@@ -24,11 +24,13 @@ namespace com.ktgame.assetdelivery
 		private static readonly Dictionary<string, float> PackProgress = new Dictionary<string, float>();
 		private static readonly HashSet<string> ConfirmedPacks = new HashSet<string>();
 		private static readonly HashSet<string> PacksNotInBuild = new HashSet<string>();
-		
+
 		public static event Action<string, float> DownloadProgress;
+
 		public static event Action<string> DownloadCompleted;
+
 		public static event Action<string, string> DownloadFailed;
-		
+
 		public static IDownloadConfirmationHandler ConfirmationHandler { get; set; }
 
 		public static bool VerboseLogging { get; set; }
@@ -50,7 +52,7 @@ namespace com.ktgame.assetdelivery
 				return _service;
 			}
 		}
-		
+
 		public static bool PacksEnabled
 		{
 			get
@@ -60,10 +62,6 @@ namespace com.ktgame.assetdelivery
 			}
 		}
 
-		/// <summary>
-		/// Khởi tạo thủ công (tuỳ chọn). Gọi trước khi load Addressables nếu muốn thay manifest/service,
-		/// ví dụ dùng plugin Google.Play.AssetDelivery hoặc giả lập trong test.
-		/// </summary>
 		public static void Initialize(AssetDeliveryManifest manifest = null, IAssetPackService service = null)
 		{
 			_initialized = false;
@@ -80,6 +78,7 @@ namespace com.ktgame.assetdelivery
 			_manifest = null;
 			_service = null;
 			_previousTransform = null;
+			_initializedTransformOnce = false;
 			ClearResolvedCache();
 			lock (CacheLock) WarnedBundles.Clear();
 			ActiveDownloads.Clear();
@@ -108,19 +107,33 @@ namespace com.ktgame.assetdelivery
 			_manifest ??= AssetDeliveryManifest.LoadFromResources();
 			_service ??= CreateDefaultService();
 
-			if (Addressables.InternalIdTransformFunc != TransformInternalId)
-			{
-				_previousTransform = Addressables.InternalIdTransformFunc;
-				Addressables.InternalIdTransformFunc = TransformInternalId;
-			}
+			EnsureTransformInstalled();
 
 			if (Application.isPlaying)
 			{
 				_ = AssetDeliveryRunner.Instance;
 			}
 
-			Log($"Khởi tạo: packsEnabled={_manifest.packsEnabled}, {_manifest.packs.Count} pack, service={_service.GetType().Name}.");
+			Log($"Initialized: packsEnabled={_manifest.packsEnabled}, {_manifest.packs.Count} pack, service={_service.GetType().Name}.");
 		}
+
+		private static void EnsureTransformInstalled()
+		{
+			Func<IResourceLocation, string> current = Addressables.InternalIdTransformFunc;
+			Func<IResourceLocation, string> ours = TransformInternalId;
+			if (current == ours) return;
+
+			if (current != null && _initializedTransformOnce)
+			{
+				Debug.LogWarning($"{LogTag} Addressables.InternalIdTransformFunc was overridden, reinstalling (the new function is still called first).");
+			}
+
+			_previousTransform = current;
+			Addressables.InternalIdTransformFunc = ours;
+			_initializedTransformOnce = true;
+		}
+
+		private static bool _initializedTransformOnce;
 
 		private static IAssetPackService CreateDefaultService()
 		{
@@ -131,8 +144,8 @@ namespace com.ktgame.assetdelivery
 #endif
 		}
 
-		#region Tra cứu
-		
+		#region Lookup
+
 		public static string GetPackNameForKey(string key)
 		{
 			return Manifest.FindPackByKey(key)?.name;
@@ -160,9 +173,44 @@ namespace com.ktgame.assetdelivery
 			return false;
 		}
 
+		public static bool IsPackReady(string packName)
+		{
+			if (string.IsNullOrEmpty(packName) || !PacksEnabled) return true;
+			foreach (var pack in _manifest.ResolveWithDependencies(packName))
+			{
+				if (!IsPackAvailable(pack.name)) return false;
+			}
+
+			return true;
+		}
+
 		public static bool IsKeyAvailable(string key)
 		{
-			return IsPackAvailable(GetPackNameForKey(key));
+			return IsPackReady(GetPackNameForKey(key));
+		}
+
+		public static List<string> GetPackNamesForLabel(string label)
+		{
+			var result = new List<string>();
+			foreach (var pack in Manifest.FindPacksByLabel(label)) result.Add(pack.name);
+			return result;
+		}
+
+		public static bool IsLabelAvailable(string label)
+		{
+			foreach (var pack in GetPackNamesForLabel(label))
+			{
+				if (!IsPackReady(pack)) return false;
+			}
+
+			return true;
+		}
+
+		public static List<string> GetRequiredPacks(string packName)
+		{
+			var result = new List<string>();
+			foreach (var pack in Manifest.ResolveWithDependencies(packName)) result.Add(pack.name);
+			return result;
 		}
 
 		public static float GetPackProgress(string packName)
@@ -170,7 +218,7 @@ namespace com.ktgame.assetdelivery
 			if (IsPackAvailable(packName)) return 1f;
 			return PackProgress.TryGetValue(packName, out var p) ? p : 0f;
 		}
-		
+
 		public static List<string> GetMissingPacks()
 		{
 			var result = new List<string>();
@@ -184,8 +232,8 @@ namespace com.ktgame.assetdelivery
 
 		#endregion
 
-		#region Tải
-		
+		#region Download
+
 		public static PackDownloadOperation DownloadForKey(string key, bool interactive = true)
 		{
 			var packName = GetPackNameForKey(key);
@@ -194,9 +242,87 @@ namespace com.ktgame.assetdelivery
 				: DownloadPack(packName, interactive);
 		}
 
+		public static PackDownloadOperation DownloadForLabel(string label, bool interactive = true)
+		{
+			EnsureInitialized();
+			var required = new List<string>();
+			foreach (var pack in GetPackNamesForLabel(label))
+			{
+				foreach (var name in GetRequiredPacks(pack))
+				{
+					if (!required.Contains(name)) required.Add(name);
+				}
+			}
+
+			return DownloadMany(label, required, interactive);
+		}
+
 		public static PackDownloadOperation DownloadPack(string packName, bool interactive = true)
 		{
 			EnsureInitialized();
+			EnsureTransformInstalled();
+			var required = GetRequiredPacks(packName);
+			if (required.Count == 0) required.Add(packName);
+			return DownloadMany(packName, required, interactive);
+		}
+
+		private static PackDownloadOperation DownloadMany(string label, List<string> packs, bool interactive)
+		{
+			var missing = new List<string>();
+			foreach (var pack in packs)
+			{
+				if (!string.IsNullOrEmpty(pack) && !IsPackAvailable(pack)) missing.Add(pack);
+			}
+
+			if (missing.Count == 0) return PackDownloadOperation.FromCompleted(label);
+			if (missing.Count == 1 && missing[0] == label) return DownloadSingle(label, interactive);
+
+			var aggregate = new PackDownloadOperation(label, interactive);
+			var children = new List<PackDownloadOperation>();
+			foreach (var pack in missing) children.Add(DownloadSingle(pack, interactive));
+
+			void Refresh(PackDownloadOperation _)
+			{
+				if (aggregate.IsDone) return;
+				float sum = 0f;
+				long done = 0, total = 0;
+				foreach (var child in children)
+				{
+					sum += child.Progress;
+					done += child.BytesDownloaded;
+					total += child.TotalBytes;
+				}
+
+				aggregate.Report(new AssetPackProgress
+				{
+					PackName = label,
+					Status = AssetPackStatus.Downloading,
+					Progress = sum / children.Count,
+					BytesDownloaded = done,
+					TotalBytes = total,
+				});
+
+				foreach (var child in children)
+				{
+					if (!child.IsDone) return;
+				}
+
+				var failed = children.Find(c => !c.Succeeded);
+				if (failed == null) aggregate.Complete(PackDownloadResult.Succeeded, null);
+				else aggregate.Complete(failed.Result, failed.Error);
+			}
+
+			foreach (var child in children)
+			{
+				child.ProgressChanged += Refresh;
+				child.Completed += Refresh;
+			}
+
+			return aggregate;
+		}
+
+		private static PackDownloadOperation DownloadSingle(string packName, bool interactive)
+		{
 			if (IsPackAvailable(packName))
 			{
 				return PackDownloadOperation.FromCompleted(packName);
@@ -216,12 +342,12 @@ namespace com.ktgame.assetdelivery
 			var op = new PackDownloadOperation(packName, interactive);
 			if (PacksNotInBuild.Contains(packName))
 			{
-				Finish(op, PackDownloadResult.NotInBuild, $"Pack '{packName}' không có trong bản build này.");
+				Finish(op, PackDownloadResult.NotInBuild, $"Pack '{packName}' is not part of this build.");
 				return op;
 			}
 
 			ActiveDownloads[packName] = op;
-			Log($"Bắt đầu tải '{packName}' ({(interactive ? "interactive" : "ngầm")}).");
+			Log($"Downloading '{packName}' ({(interactive ? "interactive" : "background")}).");
 
 			try
 			{
@@ -229,7 +355,7 @@ namespace com.ktgame.assetdelivery
 			}
 			catch (Exception e)
 			{
-				Finish(op, PackDownloadResult.Failed, $"Không gọi được dịch vụ tải cho '{packName}': {e.Message}");
+				Finish(op, PackDownloadResult.Failed, $"Failed to start download of '{packName}': {e.Message}");
 			}
 
 			return op;
@@ -239,7 +365,7 @@ namespace com.ktgame.assetdelivery
 		{
 			if (!ActiveDownloads.TryGetValue(packName, out var op)) return;
 			_service.Cancel(packName);
-			Finish(op, PackDownloadResult.Canceled, "Đã huỷ.");
+			Finish(op, PackDownloadResult.Canceled, "Canceled.");
 		}
 
 		private static void OnDownloadUpdate(PackDownloadOperation op, AssetPackProgress progress)
@@ -260,17 +386,17 @@ namespace com.ktgame.assetdelivery
 					if (progress.IsPackUnavailable)
 					{
 						PacksNotInBuild.Add(op.PackName);
-						Finish(op, PackDownloadResult.NotInBuild, $"Pack '{op.PackName}' không có trong bản build này ({progress.Error}).");
+						Finish(op, PackDownloadResult.NotInBuild, $"Pack '{op.PackName}' is not part of this build ({progress.Error}).");
 					}
 					else
 					{
-						Finish(op, PackDownloadResult.Failed, $"Tải '{op.PackName}' thất bại: {progress.Error ?? "không rõ lỗi"}.");
+						Finish(op, PackDownloadResult.Failed, $"Download of '{op.PackName}' failed: {progress.Error ?? "unknown error"}.");
 					}
 
 					break;
 
 				case AssetPackStatus.Canceled:
-					Finish(op, PackDownloadResult.Canceled, "Đã huỷ.");
+					Finish(op, PackDownloadResult.Canceled, "Canceled.");
 					break;
 
 				case AssetPackStatus.WaitingForWifi:
@@ -283,7 +409,7 @@ namespace com.ktgame.assetdelivery
 		{
 			if (op.ConfirmationRequested || op.IsDone) return;
 			op.ConfirmationRequested = true;
-			Log($"'{op.PackName}' đang chờ WiFi, hỏi người chơi cho tải bằng dữ liệu di động.");
+			Log($"'{op.PackName}' is waiting for Wi-Fi, asking the player to allow mobile data.");
 
 			void OnResult(bool allowed)
 			{
@@ -291,7 +417,7 @@ namespace com.ktgame.assetdelivery
 				{
 					if (allowed || op.IsDone) return;
 					_service.Cancel(op.PackName);
-					Finish(op, PackDownloadResult.Declined, "Người chơi từ chối tải bằng dữ liệu di động.");
+					Finish(op, PackDownloadResult.Declined, "The player declined downloading over mobile data.");
 				});
 			}
 
@@ -309,7 +435,7 @@ namespace com.ktgame.assetdelivery
 				ClearResolvedCache();
 				ConfirmedPacks.Add(op.PackName);
 				PackProgress[op.PackName] = 1f;
-				Log($"Tải '{op.PackName}' xong.");
+				Log($"Downloaded '{op.PackName}'.");
 				op.Complete(result, null);
 				DownloadProgress?.Invoke(op.PackName, 1f);
 				DownloadCompleted?.Invoke(op.PackName);
@@ -323,7 +449,7 @@ namespace com.ktgame.assetdelivery
 
 		#endregion
 
-		#region Chuyển hướng bundle
+		#region Bundle redirection
 
 		private static string TransformInternalId(IResourceLocation location)
 		{
@@ -355,7 +481,7 @@ namespace com.ktgame.assetdelivery
 				if (!string.IsNullOrEmpty(resolved))
 				{
 					lock (CacheLock) ResolvedBundlePaths[fileName] = resolved;
-					Log($"Chuyển '{fileName}' -> '{resolved}'.");
+					Log($"Redirect '{fileName}' -> '{resolved}'.");
 					return resolved;
 				}
 
@@ -363,12 +489,12 @@ namespace com.ktgame.assetdelivery
 				lock (CacheLock) firstWarning = WarnedBundles.Add(fileName);
 				if (firstWarning)
 				{
-					Debug.LogWarning($"{LogTag} Không tìm thấy '{fileName}' trong pack '{pack.name}' (pack chưa tải hoặc build lệch catalog). Hãy gọi DownloadPack trước khi load.");
+					Debug.LogWarning($"{LogTag} '{fileName}' not found in pack '{pack.name}' (pack not downloaded yet, or build does not match the catalog). Call DownloadPack before loading.");
 				}
 			}
 			catch (Exception e)
 			{
-				Debug.LogWarning($"{LogTag} TransformInternalId lỗi: {e.Message}");
+				Debug.LogWarning($"{LogTag} TransformInternalId failed: {e.Message}");
 			}
 
 			return id;
@@ -399,7 +525,7 @@ namespace com.ktgame.assetdelivery
 			}
 			catch (Exception e)
 			{
-				Debug.LogWarning($"{LogTag} Lỗi tìm '{fileName}' trong '{packPath}': {e.Message}");
+				Debug.LogWarning($"{LogTag} Failed to search '{fileName}' in '{packPath}': {e.Message}");
 			}
 
 			return null;
