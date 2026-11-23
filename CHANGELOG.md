@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/KhanhTQ-Organization/com.ktgame.assetdelivery/compare/v1.0.0...v1.0.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* big update ([4f902a4](https://github.com/KhanhTQ-Organization/com.ktgame.assetdelivery/commit/4f902a44c4ce14ad58e1812c479daeeca3f29736))
+
 # 1.0.0 (2026-11-23)
 
 

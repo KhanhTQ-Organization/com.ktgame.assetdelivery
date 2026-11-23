@@ -1,6 +1,6 @@
 {
   "name": "com.ktgame.assetdelivery",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "displayName": "com.ktgame.assetdelivery",
   "description": "Chia Addressables group thành Play Asset Delivery pack (install-time / fast-follow / on-demand) để giảm dung lượng cài đặt trên Google Play, kèm runtime tải pack và chuyển hướng bundle.",
   "unity": "2022.3",
