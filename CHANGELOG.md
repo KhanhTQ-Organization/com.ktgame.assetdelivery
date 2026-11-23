@@ -1,3 +1,10 @@
+# 1.0.0 (2026-11-23)
+
+
+### Bug Fixes
+
+* release package ([4930aef](https://github.com/KhanhTQ-Organization/com.ktgame.assetdelivery/commit/4930aefb2ccd5ceb29c763a2b8d4ff67242144e1))
+
 # Changelog
 
 ## [1.0.0] - 2026-11-23
