@@ -1,0 +1,31 @@
+{
+    "name": "com.ktgame.assetdelivery.editor.ktgame",
+    "rootNamespace": "com.ktgame.assetdelivery.editor.ktgame",
+    "references": [
+        "com.ktgame.assetdelivery",
+        "com.ktgame.assetdelivery.editor",
+        "com.ktgame.core.editor",
+        "Unity.Addressables",
+        "Unity.Addressables.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "ODIN_INSPECTOR",
+        "KTGAME_CORE"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.ktgame.core",
+            "expression": "",
+            "define": "KTGAME_CORE"
+        }
+    ],
+    "noEngineReferences": false
+}
