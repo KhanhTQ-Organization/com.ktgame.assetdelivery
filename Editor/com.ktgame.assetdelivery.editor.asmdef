@@ -1,0 +1,21 @@
+{
+    "name": "com.ktgame.assetdelivery.editor",
+    "rootNamespace": "com.ktgame.assetdelivery.editor",
+    "references": [
+        "com.ktgame.assetdelivery",
+        "Unity.Addressables",
+        "Unity.Addressables.Editor",
+        "Unity.ResourceManager"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

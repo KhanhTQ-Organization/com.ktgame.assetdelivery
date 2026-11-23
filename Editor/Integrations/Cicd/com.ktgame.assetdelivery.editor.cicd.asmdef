@@ -1,0 +1,6 @@
+{
+    "name": "com.ktgame.assetdelivery.editor.cicd.removed",
+    "references": [],
+    "includePlatforms": ["Editor"],
+    "defineConstraints": ["KTGAME_ASSETDELIVERY_CICD_REMOVED"]
+}
